@@ -12,9 +12,19 @@ from sklearn.metrics import classification_report, f1_score, precision_score, re
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.multioutput import MultiOutputClassifier
 from sklearn.model_selection import GridSearchCV
 
 def load_data(database_filepath):
+    '''
+    Load data from SQLite. Parameter: database_filepath: Path to file sqlite.db
+    Return:
+    X: Contain message
+    Y: Contain categories
+    category_names: List of category names
+    
+    '''
+    
     engine = create_engine(f'sqlite:///{database_filepath}')
     df = pd.read_sql_table('DisasterMessages', engine)
     X = df['message']
@@ -23,6 +33,11 @@ def load_data(database_filepath):
     return X, Y, category_names
 
 def tokenize(text):
+    '''
+    This function tokenizes a text string into a list of words.
+    Parameter: text: A string containing the text to be tokenized.
+    Returns: A list of tokens (single words) separated from input text.
+    '''
     tokens = word_tokenize(text)
     lemmatizer = WordNetLemmatizer()
     # Lemmatize and normalize case
@@ -34,10 +49,13 @@ def tokenize(text):
 
 
 def build_model():
+    '''
+    Build pipeline to run 3 libraries: CountVectorizer, TfidfTransformer, RandomForestClassifier
+    '''
     pipeline = Pipeline([
         ('vect', CountVectorizer(tokenizer=tokenize)),
         ('tfidf', TfidfTransformer()),
-        ('clf', RandomForestClassifier()),
+        ('clf', MultiOutputClassifier(RandomForestClassifier())),
     ])
     print("Pipeline parameters:")
     print(pipeline.get_params())
@@ -45,6 +63,11 @@ def build_model():
 
 
 def evaluate_model(model, X_test, Y_test, category_names):
+    '''
+    Evaluate model
+    model: Pipeline containing classifier.
+    Metrics: F1 score, Recall, Precision
+    '''
     # Make predictions on the test set
     Y_pred = model.predict(X_test)
     
@@ -65,6 +88,9 @@ def evaluate_model(model, X_test, Y_test, category_names):
 
 
 def save_model(model, model_filepath):
+    '''
+    Save model into pickle file
+    '''
     try:
         with open(model_filepath, 'wb') as file:
             pickle.dump(model, file)
@@ -84,13 +110,30 @@ def main():
         model = build_model()
         
         print('Training model...')
-        model.fit(X_train, Y_train)
+        #model.fit(X_train, Y_train)
+        parameters = {
+            'clf__estimator__n_estimators': [2, 4],  # Number of trees in the forest
+            'clf__estimator__max_depth': [None, 2],  # Maximum depth of the tree
+            'clf__estimator__min_samples_split': [2, 4],  # Minimum number of samples required to split an internal node
+        }
+        # Set up GridSearchCV
+        grid_search = GridSearchCV(model, parameters, cv=5, scoring='f1_weighted', verbose=2)
+        
+        # Fit GridSearchCV
+        grid_search.fit(X_train, Y_train)
+
+        # Get the best parameters and best score
+        best_params = grid_search.best_params_
+        best_score = grid_search.best_score_
+
+        print(f"Best parameters: {best_params}")
+        print(f"Best cross-validation score: {best_score}")
         
         print('Evaluating model...')
-        evaluate_model(model, X_test, Y_test, category_names)
+        evaluate_model(grid_search.best_estimator_, X_test, Y_test, category_names)
 
         print('Saving model...\n    MODEL: {}'.format(model_filepath))
-        save_model(model, model_filepath)
+        save_model(grid_search.best_estimator_, model_filepath)
 
         print('Trained model saved!')
 
