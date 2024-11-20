@@ -13,27 +13,31 @@ def load_data(messages_filepath, categories_filepath):
 
 
 def clean_data(df):
-    """
-    Cleans the input DataFrame by splitting the 'categories' column into individual category columns,
-    converting the values to binary (0 or 1), and dropping duplicates.
+    '''
+    Cleans the input DataFrame by splitting the 'categories' column into individual category columns, converting the values to binary (0 or 1), and dropping duplicates.
 
     Parameters:
     df (DataFrame): The input DataFrame containing a 'categories' column.
 
     Returns:
     DataFrame: The cleaned DataFrame with individual category columns.
-    """
+    '''
     # Create a dataframe of the 36 individual category columns
     categories_split = df['categories'].str.split(';', expand=True)
     
     # Extract new column names for categories
-    category_colnames = categories_split.iloc[0].apply(lambda x: x.split('-')[0]).tolist()
+    category_colnames = categories_split.iloc[0].tolist()
+    for col in range(len(category_colnames)):
+        category_colnames[col] = category_colnames[col].split('-')[0]
+        
+    # Rename the columns of the categories_split DataFrame
     categories_split.columns = category_colnames
     
     # Convert category values to just numbers 0 or 1
-    for column in category_colnames:
+    for col in category_colnames:
         # Set each value to be the last character of the string, then convert to numeric
-        categories_split[column] = categories_split[column].astype(str).str[-1].astype(int)
+        categories_split[col] = categories_split[col].astype(str).str[-1].astype(int)
+        
     
     # Drop the original categories column from df
     df = df.drop('categories', axis=1)
@@ -43,6 +47,9 @@ def clean_data(df):
     
     # Drop duplicates
     df = df.drop_duplicates()
+    
+    # Remove related == 2 as no meaning
+    df = df[df['related'] != 2]
     
     return df
 
@@ -56,7 +63,8 @@ def save_data(df, database_filename):
     engine = create_engine(f'sqlite:///{database_filename}')
     with engine.connect() as connection:
         # Drop the table if it exists
-        connection.execute(f"DROP TABLE IF EXISTS {'DisasterMessages'}")
+        connection.execute("DROP TABLE IF EXISTS DisasterMessages")
+    # Save the DataFrame to the database
     df.to_sql('DisasterMessages', engine, index=False, if_exists='replace')
 
 def main():
